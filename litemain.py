@@ -19,27 +19,33 @@ import logging
 import colorlog
 
 
+# print a long line on console to separate different areas
+def sep_line():
+    logger.debug('\b' * 7 + '--' * 47)
+
+
 # before calling download_gallery function
 def pre_download(input_link):
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
     
-    def detail_dl(link):
+    def detail_dl(_link):
         try:
-            content = requests.get(link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
-            _content_status = content.status_code
+            _content = requests.get(_link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
+            _content_status = _content.status_code
             logger.info('Detail page content received.')
-            content_html = BeautifulSoup(content.text, 'lxml')
-        except Exception as error:
+            _content_html = BeautifulSoup(_content.text, 'lxml')
+        except Exception as _error:
             logger.error('An error has occurred when requesting for detail page!')
-            logger.error('Detail Page Error: ' + link)
-            logger.error(repr(error))
-            logger.debug('\b' * 7 + '--' * 50)
+            logger.error('Detail Page Error: ' + _link)
+            logger.error(repr(_error))
+            sep_line()
             return -3
         if _content_status >= 500:
             logger.error('Server Error (%d)! Please try again later.' % _content_status)
+            sep_line()
             return -4
         else:
-            _status = download_gallery(content_html, link)
+            _status = download_gallery(_content_html, _link)
             return _status
 
     # detail page
@@ -83,7 +89,7 @@ def pre_download(input_link):
                 logger.error('An error has occurred when requesting for list page!')
                 logger.error('List Page Error: ' + list_page_link)
                 logger.error(repr(error))
-                logger.debug('\b' * 7 + '--' * 50)
+                sep_line()
                 return -5
             
             if content_status >= 500:
@@ -91,10 +97,10 @@ def pre_download(input_link):
                 server_error_times += 1
                 if server_error_times == 3:
                     logger.error('Server Error times exceed the limit! Please try again later.')
-                    logger.debug('\b' * 7 + '--' * 50)
+                    sep_line()
                     return -4
                 page_num += 1
-                logger.debug('\b' * 7 + '--' * 50)
+                sep_line()
                 continue
             else:
                 server_error_times = 0  # set to 0 if not continuous
@@ -107,10 +113,10 @@ def pre_download(input_link):
                 no_gallery_times += 1
                 if no_gallery_times == 3:
                     logger.warning('Gallery Not Found times exceed the limit!')
-                    logger.debug('\b' * 7 + '--' * 50)
+                    sep_line()
                     return -6
                 page_num += 1
-                logger.debug('\b' * 7 + '--' * 50)
+                sep_line()
                 continue
             else:
                 no_gallery_times = 0  # set to 0 if not continuous
@@ -123,12 +129,12 @@ def pre_download(input_link):
 
 # download images from detail page
 def download_gallery(content_html, detail_link):
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
     timer_start = time.perf_counter()
 
     if not (content_html.find('h1') and content_html.find('h2')):
         logger.error('Gallery Access Failed! [%s]' % detail_link)
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
         return -1
 
     name_jap = content_html.find('h1').get_text()\
@@ -151,7 +157,7 @@ def download_gallery(content_html, detail_link):
     else:
         if not os.path.exists(incomplete_path):
             logger.info('Gallery Already Downloaded.')
-            logger.debug('\b' * 7 + '--' * 50)
+            sep_line()
             return 1
         else:
             logger.warning('Incomplete Gallery! Initiating Download Process...')
@@ -194,7 +200,7 @@ def download_gallery(content_html, detail_link):
         img_path = os.path.join('Gallery', name_jap, img_name)
         progress = pic_num_cur / img_num_ttl  # progress calculate
         random_wait_time = uniform(2, 4.5)  # sleep, reduce the workload of website
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
 
         # Image not downloaded
         if not os.path.exists(img_path):
@@ -299,7 +305,7 @@ def download_gallery(content_html, detail_link):
         with open(incomplete_path, 'w', encoding='utf-8') as incomplete_file:
             incomplete_file.write(json.dumps(incomplete_dict, ensure_ascii=False))
 
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
     timer_stop = time.perf_counter()
     # calculate the time used
     time_used = timer_stop - timer_start
@@ -316,7 +322,7 @@ def download_gallery(content_html, detail_link):
         except FileNotFoundError:
             pass
         logger.info('Download Complete!')
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
         return 1
 
     # Current gallery is incomplete
@@ -327,13 +333,13 @@ def download_gallery(content_html, detail_link):
         for failed_link in failed_links:
             logger.error('[%d]: %s' % (i, failed_link))
             i += 1
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
         return -2
 
 
 # save covers of all galleries to 'Cover' folder
 def collect_cover():
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
     exist_covers = os.listdir('Cover')
 
     # The list of galleries that have no cover in it.
@@ -362,7 +368,7 @@ def collect_cover():
                 cover_missing.append(folder_name)
                 continue
 
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
     if len(cover_missing) > 0:
         logger.error('Cover Collection Incomplete: [%d] Covers Missing!' % len(cover_missing))
         i = 1
@@ -371,12 +377,12 @@ def collect_cover():
             i += 1
     else:
         logger.info('Cover Collection Complete!')
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
 
 
 # incomplete galleries download restart
 def incomplete_restart():
-    logger.debug('\b' * 7 + '--' * 50)
+    sep_line()
     gal_names = os.listdir('Gallery')
 
     # Find all incomplete galleries
@@ -400,18 +406,18 @@ def incomplete_restart():
             logger.warning('[%d]: %s' % (i, incomplete_name))
             i += 1
 
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
         logger.info('Incomplete Download Process Starts!')
         for detail_link in incomplete_links:
             pre_download(detail_link)
 
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
         logger.info('Incomplete Download Process Finished!')
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
 
     else:
         logger.info('No Incomplete Galleries Found!')
-        logger.debug('\b' * 7 + '--' * 50)
+        sep_line()
 
 
 def set_logger():
