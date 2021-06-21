@@ -4,7 +4,7 @@
 # @Description: Lite Version of EroCool Downloader
 # @Author:      PetrelPine [https://github.com/PetrelPine]
 # @Contact:     petrelpine@gmail.com (report bugs or give suggestions)
-# @Version:     Lite V1.2
+# @Version:     Lite V1.2 Stable
 
 
 from bs4 import BeautifulSoup
@@ -39,11 +39,11 @@ def pre_download(input_link):
             logger.error('Detail Page Error: ' + _link)
             logger.error(repr(_error))
             sep_line()
-            return -3
+            return -3  # detail page error
         if _content_status >= 500:
             logger.error('Server Error (%d)! Please try again later.' % _content_status)
             sep_line()
-            return -4
+            return -4  # server error
         else:
             _status = download_gallery(_content_html, _link)
             return _status
@@ -90,7 +90,7 @@ def pre_download(input_link):
                 logger.error('List Page Error: ' + list_page_link)
                 logger.error(repr(error))
                 sep_line()
-                return -5
+                return -5  # list page error
             
             if content_status >= 500:
                 logger.error('Server Error (%d)!' % content_status)
@@ -98,31 +98,43 @@ def pre_download(input_link):
                 if server_error_times == 3:
                     logger.error('Server Error times exceed the limit! Please try again later.')
                     sep_line()
-                    return -4
+                    return -4  # server error
                 page_num += 1
                 sep_line()
                 continue
             else:
                 server_error_times = 0  # set to 0 if not continuous
 
-            raw_detail_links = content_html.find_all('a', class_='list-wrap gallery')
+            raw_info_objs = content_html.find_all('a', class_='list-wrap gallery')
             
-            if raw_detail_links is None:
+            if raw_info_objs is None:
                 logger.warning('No galleries found in current list page!')
                 logger.warning('Possible reasons: page exceeded / incorrect class selector.')
                 no_gallery_times += 1
                 if no_gallery_times == 3:
                     logger.warning('Gallery Not Found times exceed the limit!')
                     sep_line()
-                    return -6
+                    return -6  # gallery not found in list page error
                 page_num += 1
                 sep_line()
                 continue
             else:
                 no_gallery_times = 0  # set to 0 if not continuous
 
-            for raw_detail_link in raw_detail_links:
-                detail_link = PRE_LINK + raw_detail_link.get('href')
+            sep_line()
+            for raw_info_obj in raw_info_objs:
+                detail_link = PRE_LINK + raw_info_obj.get('href')
+                name_jap = raw_info_obj.find('h3', class_='caption').get('title')\
+                    .replace('?', '？').replace(':', '：').replace('/', ' ').replace('|', '、')\
+                    .replace('*', '·').replace('"', '\'').replace('<', '《').replace('>', '》')\
+                    .replace("...", "").replace('\t', ' ').replace('\n', ' ').replace('\\', ' ')\
+                    .strip('.').strip().strip('.').strip()
+                gal_path = os.path.join('Gallery', name_jap)
+                if os.path.exists(gal_path):
+                    if not os.path.exists(os.path.join(gal_path, 'incomplete.json')):
+                        logger.info('Gallery Already Downloaded. [%s]' % detail_link)
+                        sep_line()
+                        continue
                 detail_dl(detail_link)
             page_num += 1
 
@@ -135,7 +147,7 @@ def download_gallery(content_html, detail_link):
     if not (content_html.find('h1') and content_html.find('h2')):
         logger.error('Gallery Access Failed! [%s]' % detail_link)
         sep_line()
-        return -1
+        return -1  # gallery access error
 
     name_jap = content_html.find('h1').get_text()\
         .replace('?', '？').replace(':', '：').replace('/', ' ').replace('|', '、')\
@@ -156,11 +168,11 @@ def download_gallery(content_html, detail_link):
     # Gallery folder already exists
     else:
         if not os.path.exists(incomplete_path):
-            logger.info('Gallery Already Downloaded.')
+            logger.info('Gallery Already Downloaded. [%s]' % detail_link)
             sep_line()
-            return 1
+            return 1  # success
         else:
-            logger.warning('Incomplete Gallery! Initiating Download Process...')
+            logger.warning('Incomplete gallery! Initiating download process...')
 
     name_en = content_html.find('h2').get_text()\
         .replace('?', '？').replace(':', '：').replace('/', ' ').replace('|', '、')\
@@ -323,7 +335,7 @@ def download_gallery(content_html, detail_link):
             pass
         logger.info('Download Complete!')
         sep_line()
-        return 1
+        return 1  # success
 
     # Current gallery is incomplete
     else:
@@ -334,7 +346,7 @@ def download_gallery(content_html, detail_link):
             logger.error('[%d]: %s' % (i, failed_link))
             i += 1
         sep_line()
-        return -2
+        return -2  # incomplete gallery: failed images
 
 
 # save covers of all galleries to 'Cover' folder
