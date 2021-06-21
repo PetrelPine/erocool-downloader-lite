@@ -4,7 +4,7 @@
 # @Description: Lite Version of EroCool Downloader
 # @Author:      PetrelPine [https://github.com/PetrelPine]
 # @Contact:     petrelpine@gmail.com (report bugs or give suggestions)
-# @Version:     Lite V1.1
+# @Version:     Lite V1.2
 
 
 from bs4 import BeautifulSoup
@@ -22,28 +22,31 @@ import colorlog
 # before calling download_gallery function
 def pre_download(input_link):
     logger.debug('\b' * 7 + '--' * 50)
-
-    # detail page
-    if 'detail' in input_link:
+    
+    def detail_dl(link):
         try:
-            content = requests.get(input_link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
-            content_status = content.status_code
+            content = requests.get(link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
+            _content_status = content.status_code
             logger.info('Detail page content received.')
             content_html = BeautifulSoup(content.text, 'lxml')
         except Exception as error:
             logger.error('An error has occurred when requesting for detail page!')
-            logger.error('Detail Page Error: ' + input_link)
+            logger.error('Detail Page Error: ' + link)
             logger.error(repr(error))
             logger.debug('\b' * 7 + '--' * 50)
-            return -1
-        if content_status >= 500:
-            logger.error('Server Error (%d)! Please try again later.' % content_status)
-            return -1
+            return -3
+        if _content_status >= 500:
+            logger.error('Server Error (%d)! Please try again later.' % _content_status)
+            return -4
         else:
-            status = download_gallery(content_html, input_link)
-            return status
+            _status = download_gallery(content_html, link)
+            return _status
 
-    # main list page
+    # detail page
+    if 'detail' in input_link:
+        return detail_dl(input_link)
+
+    # list page
     else:
         server_error_times = 0  # status code >= 500 times
         no_gallery_times = 0  # # no gallery found times
@@ -74,14 +77,14 @@ def pre_download(input_link):
             try:
                 content = requests.get(list_page_link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
                 content_status = content.status_code
-                logger.info('Main list page content received.')
+                logger.info('List page content received.')
                 content_html = BeautifulSoup(content.text, 'lxml')
             except Exception as error:
-                logger.error('An error has occurred when requesting for main list page!')
-                logger.error('Main Page Error: ' + list_page_link)
+                logger.error('An error has occurred when requesting for list page!')
+                logger.error('List Page Error: ' + list_page_link)
                 logger.error(repr(error))
                 logger.debug('\b' * 7 + '--' * 50)
-                return -1
+                return -5
             
             if content_status >= 500:
                 logger.error('Server Error (%d)!' % content_status)
@@ -89,7 +92,7 @@ def pre_download(input_link):
                 if server_error_times == 3:
                     logger.error('Server Error times exceed the limit! Please try again later.')
                     logger.debug('\b' * 7 + '--' * 50)
-                    return -1
+                    return -4
                 page_num += 1
                 logger.debug('\b' * 7 + '--' * 50)
                 continue
@@ -97,14 +100,15 @@ def pre_download(input_link):
                 server_error_times = 0  # set to 0 if not continuous
 
             raw_detail_links = content_html.find_all('a', class_='list-wrap gallery')
+            
             if raw_detail_links is None:
-                logger.warning('No galleries found in current main list page!')
+                logger.warning('No galleries found in current list page!')
                 logger.warning('Possible reasons: page exceeded / incorrect class selector.')
                 no_gallery_times += 1
                 if no_gallery_times == 3:
                     logger.warning('Gallery Not Found times exceed the limit!')
                     logger.debug('\b' * 7 + '--' * 50)
-                    return -1
+                    return -6
                 page_num += 1
                 logger.debug('\b' * 7 + '--' * 50)
                 continue
@@ -113,16 +117,7 @@ def pre_download(input_link):
 
             for raw_detail_link in raw_detail_links:
                 detail_link = PRE_LINK + raw_detail_link.get('href')
-                try:
-                    detail = requests.get(detail_link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
-                    detail_html = BeautifulSoup(detail.text, 'lxml')
-                except Exception as error:
-                    logger.error('An error has occurred when requesting for detail page!')
-                    logger.error('Detail Page Error: ' + detail_link)
-                    logger.error(repr(error))
-                    logger.debug('\b' * 7 + '--' * 50)
-                    continue
-                download_gallery(detail_html, detail_link)
+                detail_dl(detail_link)
             page_num += 1
 
 
@@ -131,8 +126,8 @@ def download_gallery(content_html, detail_link):
     logger.debug('\b' * 7 + '--' * 50)
     timer_start = time.perf_counter()
 
-    if not content_html.find('h1'):
-        logger.error('Gallery Access Failed! (No h1 Title) [%s]' % detail_link)
+    if not (content_html.find('h1') and content_html.find('h2')):
+        logger.error('Gallery Access Failed! [%s]' % detail_link)
         logger.debug('\b' * 7 + '--' * 50)
         return -1
 
@@ -322,7 +317,7 @@ def download_gallery(content_html, detail_link):
             pass
         logger.info('Download Complete!')
         logger.debug('\b' * 7 + '--' * 50)
-        return 1  # complete
+        return 1
 
     # Current gallery is incomplete
     else:
@@ -333,7 +328,7 @@ def download_gallery(content_html, detail_link):
             logger.error('[%d]: %s' % (i, failed_link))
             i += 1
         logger.debug('\b' * 7 + '--' * 50)
-        return -1  # incomplete
+        return -2
 
 
 # save covers of all galleries to 'Cover' folder
@@ -509,7 +504,7 @@ Mode Selection (enter the number):
         continue
 
     # 0-5 different modes
-    if mode == 1:  # detail page / main list page download
+    if mode == 1:  # detail page / list page download
         links = []
         while True:
             link = input('Please enter the link (Leave blank to finish):')
