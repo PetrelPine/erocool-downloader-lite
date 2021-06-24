@@ -554,14 +554,14 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
 # PROXIES = {'https': 'https://127.0.0.1:1080', 'http': 'http://127.0.0.1:1080'}
 PROXIES = {'https': None, 'http': None}  # support ssr global mode
 # Exclude the galleries that have tags you don't want to see
-# EXCLUDED_TAGS = ['㚻 (男男性愛)', '扶她', '只有男性', '性轉換', '藥娘',
-#                  'yaoi', 'futanari', 'males only', 'gender bender', 'tomgirl', 'tomboy',
-#                  'dickgirl on male', 'male on dickgirl', 'sole dickgirl', ]
-EXCLUDED_TAGS = []
+EXCLUDED_TAGS = ['㚻 (男男性愛)', '扶她', '只有男性', '性轉換', '藥娘',
+                 'yaoi', 'futanari', 'males only', 'gender bender', 'tomgirl', 'tomboy',
+                 'dickgirl on male', 'male on dickgirl', 'sole dickgirl', ]
+# EXCLUDED_TAGS = []
 
-logger.info('This is the lite edition of EroCool Downloader.')
-logger.info('Programed by PetrelPine [https://github.com/PetrelPine].')
-logger.info('Report bugs or give suggestions: petrelpine@gmail.com')
+logger.info('EroCool Downloader Lite v1.3')
+logger.info('https://github.com/PetrelPine/EroCoolDownloaderLite')
+logger.info('petrelpine@gmail.com (report bugs or give suggestions)')
 time.sleep(0.5)  # wait in order to let logger info appears first
 
 # Main Loop
