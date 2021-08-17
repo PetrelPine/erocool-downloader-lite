@@ -12,31 +12,29 @@ You can enter links of detail page or list page.
 
 + If it's a detail page link, it will download target gallery **without any restrictions**. 
 
-+ If it's a list page link, it will ask you to enter page number. '6-10' means download page 6-10, '6-' means download all pages from page 6 to last page, '-10' or '10' means download all pages from page 1 to page 10. **Restrictions will be enabled when download from list page**, galleries with excluded tags and galleries without chinese version will not be downloaded. 
++ If it's a list page link, it will ask you to enter page range. '6-10' means download from page 6 to page 10, '6-' means download all pages from page 6 to last page, '-10' or '10' means download all pages from the first page to page 10. **Restrictions will be enabled when download from list page**, galleries with excluded tags and galleries without chinese version will not be downloaded. 
 
-##### Mode 2: Download Daily Ranked Galleries
++ If you entered both detail page links and list page links, detail page links will be downloaded first. When it comes to list page links, it will ask you to enter the page range.
 
-It will download all galleries in daily-ranked gallery list page. ***(restrictions are enabled)***
+##### Mode 2: Collect Covers
 
-##### Mode 3: Collect Covers
+Collect all covers from existing galleries. The collection log will be shown in the console.
 
-Collect all covers from existing galleries. *(white output means cover exists;  green output means cover is collected successfully; yellow output means cover is missing but gallery has excluded tags or gallery has no chinese version; red output means cover is missing.)*
-
-##### Mode 4: Resume Incomplete Downloads
+##### Mode 3: Resume Incomplete Downloads
 
 It will load all incomplete **detail** links from '_incomplete_links.json' file, and start to download these galleries using mode 1.
 
-##### Mode 5: Open Gallery with Specific Name
+##### Mode 4: Open Gallery by Name
 
 It will open target gallery folder if you enter the correct name of the gallery, otherwise it will only open the 'Gallery' folder. 
 
 ##### Tips:
 
-+ If you want to stop download, just close the program window, the progress is already saved. 
++ If you want to stop download process, just close the program window, the progress is already saved as the download goes. 
 
-+ All galleries are stored under 'Gallery' folder and all covers are stored under 'Cover' folder. All incomplete links are stored in '_incomplete_links.json' file.
++ All galleries are stored under 'Gallery' folder and all covers are stored under 'Cover' folder.
 
-+ You can check incomplete list page links in '_incomplete_links.json' file. *(bug: incomplete list page link will not be removed even it is complete)*
++ You can check incomplete links in '_incomplete_links.json' file. You can also add links to '_incomplete_links.json' file if you follow the pattern.
 
 --- 
 

@@ -4,7 +4,7 @@
 # @Description:  EroCool Downloader Lite
 # @Github:       https://github.com/PetrelPine/EroCoolDownloaderLite
 # @Contact:      petrelpine@gmail.com (report bugs or give suggestions)
-# @Version:      v2.0
+# @Version:      v2.1
 
 
 from win32api import SetFileAttributes as setFiAttr
@@ -20,7 +20,7 @@ import imghdr
 init(autoreset=True)  # show color in cmd window
 
 
-class PrintColor:
+class ColorPrint:
     def __init__(self):
         self.red = 31
         self.green = 32
@@ -36,19 +36,27 @@ class PrintColor:
         print(u'\033[{0}m{1}\033[0m'.format(self.yellow, text))
 
 
+# save untried links to json file
+def save_inc_links():
+    # remove duplication
+    global incomplete_links
+    incomplete_links[0] = list(set(incomplete_links[0]))
+    incomplete_links[1] = list(set(incomplete_links[1]))
+
+    # save incomplete_links to json file
+    with open('_incomplete_links.json', 'w', encoding='utf-8') as _inc_links_json:
+        _inc_links_json.write(json.dumps(incomplete_links, ensure_ascii=False))
+
+
 # before calling gal_download function
 def pre_download(input_link):
+    input_link_dup = input_link
     print('---' * 20)
 
     # function: get detail page content
     def get_detail_page(_link, _from_which):
-        # save current detail page link as incomplete link
-        with open('_incomplete_links.json', 'r', encoding='utf-8') as _inc_links_json:
-            _inc_links = json.load(_inc_links_json)
-        _inc_links.append(_link)
-        _inc_links = list(set(_inc_links))  # remove duplication
-        with open('_incomplete_links.json', 'w', encoding='utf-8') as _inc_links_json:
-            _inc_links_json.write(json.dumps(_inc_links, ensure_ascii=False))
+        incomplete_links[0].append(_link)
+        save_inc_links()
 
         try:
             _content = requests.get(_link, headers=HEADERS, timeout=TIMEOUT, proxies=PROXIES)
@@ -68,15 +76,8 @@ def pre_download(input_link):
         else:
             _status = gal_download(_content_html, _link, _from_which)  # call gal_download function to dl images
             if _status in [1, 2, -7, -8]:
-                # update '_incomplete_links.json' file
-                with open('_incomplete_links.json', 'r', encoding='utf-8') as _inc_links_json:
-                    _inc_links = json.load(_inc_links_json)
-                try:
-                    _inc_links.remove(_link)
-                except ValueError:
-                    pass
-                with open('_incomplete_links.json', 'w', encoding='utf-8') as _inc_links_json:
-                    _inc_links_json.write(json.dumps(_inc_links, ensure_ascii=False))
+                incomplete_links[0].remove(_link)
+                save_inc_links()
             return _status
 
     # detail page
@@ -167,14 +168,16 @@ def pre_download(input_link):
             # check current list page has galleries
             if not raw_info_objs:
                 print('---' * 20)
-                printy('No galleries found in current list page!')
-                printy('Possible reasons: page exceeded / incorrect class selector.')
+                printy('No galleries found in current list page! (possible reason: page exceeded)')
                 no_gallery_times += 1
                 if no_gallery_times == 3:
                     print('---' * 20)
                     printy('Gallery Not Found times exceed the limit!')
                     print('---' * 20)
-                    return -6  # gallery not found in list page
+                    # after going through all pages, delete current list page links from incomplete links
+                    incomplete_links[1].remove(input_link_dup)
+                    save_inc_links()
+                    return -6  # list page number exceeded
                 print('---' * 20)
                 continue
             else:
@@ -182,7 +185,7 @@ def pre_download(input_link):
 
             print('---' * 20)
             for raw_info_obj in raw_info_objs:
-                detail_link = PRE_LINK + raw_info_obj.get('href')
+                detail_link = 'https://zh.erocool3.com' + raw_info_obj.get('href')
                 name_jap = raw_info_obj.find('h3', class_='caption').get('title') \
                     .replace('?', '？').replace(':', '：').replace('/', ' ').replace('|', '、') \
                     .replace('*', '·').replace('"', '\'').replace('<', '《').replace('>', '》') \
@@ -210,6 +213,11 @@ def pre_download(input_link):
                             get_detail_page(detail_link, 'li')
                 else:
                     get_detail_page(detail_link, 'li')
+        # after going through all the pages in page range
+        else:
+            # delete current list page links from incomplete links
+            incomplete_links[1].remove(input_link_dup)
+            save_inc_links()
 
 
 # download images from detail page
@@ -308,10 +316,6 @@ def gal_download(content_html, detail_link, from_which):
             print('---' * 20)
             return -8  # not chinese version
 
-    printg('Downloading Images...')
-    failed_links = []  # image links failed to be downloaded
-    redirect_times = 0  # code=302; redirect times
-
     # function: make sure images have the right extensions
     def check_ext():
         img_real_ext = imghdr.what(img_path)
@@ -326,6 +330,10 @@ def gal_download(content_html, detail_link, from_which):
             _dst_path = os.path.join(os.path.dirname(img_path), str(img_num) + '.' + img_real_ext)
             os.rename(img_path, _dst_path)
 
+    printg('Downloading Images...')
+    failed_links = []  # image links download failed
+    same_err_times = 0  # continuous same error occur times
+    img_status_prev = -100  # img_status of previous image
     for img_link in img_links:
         img_name = img_link.split('/')[-1]  # image name (sample: 1.jpg / 2.jpg / 3.png / 4.png)
         img_num = int(img_name.split('.')[0])  # image number (sample: 1 / 2 / 3 / 4)
@@ -346,24 +354,20 @@ def gal_download(content_html, detail_link, from_which):
                 img_status = img_data_raw.status_code
             except Exception as error:
                 img_status = -1
-                img_data = None
-                printr('Download Failed! (Request Failed)  Progress: %.2f%% (%d/%d)'
-                       % (progress * 100, img_num, img_num_ttl))
+                img_data = 'None'
                 printr(repr(error))
 
             # download success (code 200)
             if img_status == 200:
-                printg('Download Success!  Progress: %.2f%% (%d/%d)' % (progress * 100, img_num, img_num_ttl))
+                same_err_times = 0
+                printg('Download Success.  Progress: %.2f%% (%d/%d)' % (progress * 100, img_num, img_num_ttl))
                 with open(img_path, 'wb') as img_file:
                     img_file.write(img_data)
                 check_ext()  # check image extension
 
-            # failed when requesting for image
-            elif img_status == -1:
-                failed_links.append(img_link)
-
             # download failed (code 404) (image not found)
             elif img_status == 404:
+                printy('Extension Changed.')
                 # common problem of EroCool, change the suffix may fix this
                 if img_link.endswith('jpg'):
                     img_link = img_link.replace('jpg', 'png')
@@ -380,67 +384,51 @@ def gal_download(content_html, detail_link, from_which):
                     img_status = img_data_raw.status_code
                 except Exception as error:
                     img_status = -1
-                    img_data = None
-                    printr('Download Failed! (Request Failed)  Progress: %.2f%% (%d/%d)'
-                           % (progress * 100, img_num, img_num_ttl))
+                    img_data = 'None'
                     printr(repr(error))
 
                 # download success (code 200)
                 if img_status == 200:
-                    printg('Download Success!  Progress: %.2f%% (%d/%d)' % (progress * 100, img_num, img_num_ttl))
+                    same_err_times = 0
+                    printg('Download Success.  Progress: %.2f%% (%d/%d)' % (progress * 100, img_num, img_num_ttl))
                     with open(img_path, 'wb') as img_file:
                         img_file.write(img_data)
                     check_ext()  # check image extension
-
-                # failed when requesting for image
-                elif img_status == -1:
-                    failed_links.append(img_link)
-
-                # error code = 302; redirect means this image has been restricted
-                elif img_status == 302:
-                    failed_links.append('[Redirect Error]: ' + img_link)
-                    redirect_times += 1
-                    printr('Download Failed! (Code=302)  Progress: %.2f%% (%d/%d)'
-                           % (progress * 100, img_num, img_num_ttl))
-                    printr('Redirect Error Found; Count Times: ' + str(redirect_times))
-                    if redirect_times >= 5:
-                        print('---' * 20)
-                        printr('Redirect Times Exceed the Limit!')
-                        break
-                    continue
 
                 # download failed with error code
                 else:
                     printr('Download Failed! (code=%d)  Progress: %.2f%% (%d/%d)'
                            % (img_status, progress * 100, img_num, img_num_ttl))
                     failed_links.append(img_link)
-
-            # error code = 302; redirect means this image has been restricted
-            elif img_status == 302:
-                failed_links.append('[Redirect Error]: ' + img_link)
-                redirect_times += 1
-                printr('Download Failed! (Code=302)  Progress: %.2f%% (%d/%d)'
-                       % (progress * 100, img_num, img_num_ttl))
-                printr('Redirect Error Found; Count Times: ' + str(redirect_times))
-                if redirect_times >= 5:
-                    print('---' * 20)
-                    printr('Redirect Times Exceed the Limit!')
-                    break
-                continue
+                    if img_status == img_status_prev:
+                        same_err_times += 1
+                        if same_err_times >= 5:
+                            print('---' * 20)
+                            printr('Error (code=%d) Times Exceed the Limit!' % img_status)
+                            break
+                    else:
+                        same_err_times = 0
 
             # download failed with error code
             else:
                 printr('Download Failed! (code=%d)  Progress: %.2f%% (%d/%d)'
                        % (img_status, progress * 100, img_num, img_num_ttl))
                 failed_links.append(img_link)
+                if img_status == img_status_prev:
+                    same_err_times += 1
+                    if same_err_times >= 5:
+                        print('---' * 20)
+                        printr('Error (code=%d) Times Exceed the Limit!' % img_status)
+                        break
+                else:
+                    same_err_times = 0
 
+            img_status_prev = img_status
             time.sleep(random_wait_time)
 
         # image already exists
         else:
-            printy('Image Exists!  Progress: %.2f%% (%d/%d)' % (progress * 100, img_num, img_num_ttl))
-
-        redirect_times = 0
+            printy('Image Exists.  Progress: %.2f%% (%d/%d)' % (progress * 100, img_num, img_num_ttl))
 
     # calculate the time used
     print('---' * 20)
@@ -455,11 +443,9 @@ def gal_download(content_html, detail_link, from_which):
     # download complete
     if len(failed_links) == 0:
         # delete 'incomplete.json' file
-        try:
+        if os.path.exists(incomplete_path):
             os.remove(incomplete_path)
-        except FileNotFoundError:
-            pass
-        printg('Download Complete!')
+        printg('Download Complete.')
         print('---' * 20)
         return 1  # download complete
 
@@ -472,13 +458,47 @@ def gal_download(content_html, detail_link, from_which):
         return -2  # gallery download incomplete: failed images
 
 
+# download from input links (detail / list page links)
+def download_links():
+    links = [[], []]
+    while True:
+        link = input('Please enter the link (Leave blank to finish): ')
+        if len(link) == 0 or link.isspace():
+            break
+        else:
+            if not link.startswith('https://zh.erocool3.com/'):
+                printy("Warning: Link doesn't start with 'https://zh.erocool3.com', current link will be skipped.")
+            else:
+                if '/detail/' in link:
+                    links[0].append(link)
+                    incomplete_links[0].append(link)
+                else:
+                    links[1].append(link)
+                    incomplete_links[1].append(link)
+
+    save_inc_links()
+    # link sequence download
+    if len(links[0]) > 0 or len(links[1]) > 0:
+        printg('Link Sequence Download Started.')
+        for link in links[0]:
+            pre_download(link)
+        for link in links[1]:
+            pre_download(link)
+        printg('Link Sequence Download Finished.')
+        print('---' * 20)
+    else:
+        printy('No Link Added!')
+        print('---' * 20)
+
+
 # save covers of all galleries to 'Cover' folder
 def collect_cover():
     print('---' * 20)
     exist_covers = os.listdir('Cover')
 
-    # The list of galleries that have no cover in it
     cover_missing = []
+    cover_missing_chn = []
+    cover_missing_tag = []
     cover_collected = []
 
     for folder_name in os.listdir('Gallery'):
@@ -496,7 +516,7 @@ def collect_cover():
             img_dst_jpg = os.path.join(os.path.curdir, 'Cover', folder_name + '.jpg')
             img_dst_png = os.path.join(os.path.curdir, 'Cover', folder_name + '.png')
 
-            # collect cover
+            # cover found
             if os.path.exists(img_src_jpg):
                 copyfile(src=img_src_jpg, dst=img_dst_jpg)
                 cover_collected.append(folder_name)
@@ -508,66 +528,73 @@ def collect_cover():
             else:
                 # gallery with excluded tags
                 if os.path.exists(os.path.join('Gallery', folder_name, 'excluded_tags.json')):
-                    folder_name = '[WITH-EXCLUDED-TAGS] >>> ' + folder_name
+                    cover_missing_tag.append(folder_name)
                 # gallery without chinese version
                 elif os.path.exists(os.path.join('Gallery', folder_name, 'not_chn_ver.json')):
-                    folder_name = '[NOT-CHN-VER] >>> ' + folder_name
-                cover_missing.append(folder_name)
+                    cover_missing_chn.append(folder_name)
+                else:
+                    cover_missing.append(folder_name)
+
+    if len(cover_missing_chn) > 0:
+        print('---' * 20)
+        for folder_name in cover_missing_chn:
+            printy('Cover Not Found (NOT-CHN-LANG): ' + folder_name)
+
+    if len(cover_missing_tag) > 0:
+        print('---' * 20)
+        for folder_name in cover_missing_tag:
+            printy('Cover Not Found (EXCLUDED-TAGS): ' + folder_name)
 
     if len(cover_collected) > 0:
-        for _folder_name in cover_collected:
-            printg('Cover Collected: ' + _folder_name)
-    print('---' * 20)
+        print('---' * 20)
+        for folder_name in cover_collected:
+            printg('Cover Collected: ' + folder_name)
+
     if len(cover_missing) > 0:
-        printr('Cover Collect Incomplete: [%d] Covers Missing!' % len(cover_missing))
-        cover_not_found = []
-        for _folder_name in cover_missing:
-            # galleries with excluded tags
-            if '[WITH-EXCLUDED-TAGS]' in _folder_name or '[NOT-CHN-VER]' in _folder_name:
-                printy('Cover Not Found: ' + _folder_name)
-            else:
-                cover_not_found.append(_folder_name)
-        if cover_not_found:
-            for _folder_name in cover_not_found:
-                printr('Cover Not Found: ' + _folder_name)
-    else:
-        printg('Cover Collect Complete!')
+        print('---' * 20)
+        printr('Warning: %d Covers Missing!' % len(cover_missing))
+        for folder_name in cover_missing:
+            printr('Cover Not Found: ' + folder_name)
+
+    print('---' * 20)
+    printg('Cover Collect Process Finished.')
     print('---' * 20)
 
 
-# incomplete galleries download restart
+# incomplete galleries download
 def incomplete_restart():
-    # load incomplete links from '_incomplete_links.json'
-    with open('_incomplete_links.json', 'r', encoding='utf-8') as _inc_links_json:
-        incomplete_links = json.load(_inc_links_json)
-    incomplete_links = list(set(incomplete_links))  # remove duplication
-
-    # if not detail page link, do not download
-    for incomplete_link in incomplete_links[:]:
-        if '/detail/' not in incomplete_link:
-            incomplete_links.remove(incomplete_link)
-
-    incomplete_num = len(incomplete_links)
+    incomplete_dtlinks = incomplete_links[0][:]
+    incomplete_num = len(incomplete_dtlinks)
     if incomplete_num > 0:
         printy('[%d] Incomplete Galleries: ' % incomplete_num)
-        for incomplete_link in incomplete_links:
-            printy(incomplete_link)
+        for incomplete_dtlink in incomplete_dtlinks:
+            printy(incomplete_dtlink)
 
         print('---' * 20)
-        printg('Incomplete Download Process Start!')
-        for detail_link in incomplete_links:
+        printg('Incomplete Download Process Started.')
+        for detail_link in incomplete_dtlinks:
             pre_download(detail_link)
 
         print('---' * 20)
-        printg('Incomplete Download Process Finished!')
-        print('---' * 20)
+        # still have incomplete detail links
+        if len(incomplete_links[0]) > 0:
+            printy('%d Incomplete Galleries Remaining!' % len(incomplete_links[0]))
+            for incomplete_link in incomplete_links[0]:
+                printy(incomplete_link)
+        else:
+            printg('All Incomplete Links Finished.')
 
+        print('---' * 20)
+        printg('Incomplete Download Process Finished.')
+        print('---' * 20)
+    # no incomplete links
     else:
-        printg('No Incomplete Galleries Found!')
+        print('---' * 20)
+        printg('No Incomplete Galleries Found.')
         print('---' * 20)
 
 
-# open the gallery with specific name
+# open gallery with specific name
 def open_gallery():
     name = input('Please enter the name of the gallery: ')
     exist_galleries = os.listdir('Gallery')
@@ -589,21 +616,20 @@ if not os.path.exists('Gallery'):
 if not os.path.exists('Cover'):
     os.mkdir('Cover')
 
-# create file: '_incomplete_links.json'
+# load incomplete_links from json file
+incomplete_links = [['Error'], ['Error']]
 if not os.path.exists('_incomplete_links.json'):
+    incomplete_links = [[], []]
     with open('_incomplete_links.json', 'w', encoding='utf-8') as inc_links_json:
-        inc_links_json.write(json.dumps(list(), ensure_ascii=False))
-        temp_incomplete_links = []
+        inc_links_json.write(json.dumps(incomplete_links, ensure_ascii=False))
 else:
     with open('_incomplete_links.json', 'r', encoding='utf-8') as inc_links_json:
-        temp_incomplete_links = json.load(inc_links_json)
+        incomplete_links = json.load(inc_links_json)
 
 
 TIMEOUT = (15, 15)
-PRE_LINK = 'https://zh.erocool3.com'
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"}
-# PROXIES = {'https': 'https://127.0.0.1:1080', 'http': 'http://127.0.0.1:1080'}
 PROXIES = {'https': None, 'http': None}  # support ssr global mode
 # Exclude the galleries that have tags you don't want to see
 EXCLUDED_TAGS = ['㚻 (男男性愛)', 'yaoi', '扶她', 'futanari', '只有男性', 'males only', '性轉換', 'gender bender',
@@ -611,25 +637,23 @@ EXCLUDED_TAGS = ['㚻 (男男性愛)', 'yaoi', '扶她', 'futanari', '只有男�
                  '雙肛門', 'double anal', '腦交', 'brain fuck', '殭屍', 'zombie',
                  'dickgirl on male', 'male on dickgirl', 'sole dickgirl', ]
 
-print_color = PrintColor()
-printr = print_color.print_red
-printg = print_color.print_green
-printy = print_color.print_yellow
+color_print = ColorPrint()
+printr = color_print.print_red
+printg = color_print.print_green
+printy = color_print.print_yellow
 
-printg('EroCool Downloader Lite v2.0')
+printg('EroCool Downloader Lite v2.1')
 printg('https://github.com/PetrelPine/EroCoolDownloaderLite')
-printg('petrelpine@gmail.com (report bugs or give suggestions)')
 time.sleep(0.5)
 
 # main loop
 while True:
     print('''
 Mode Selection (enter the number):
-1  >>>  Download From Links
-2  >>>  Download Daily Ranked Galleries
-3  >>>  Collect Covers
-4  >>>  Resume Incomplete Downloads
-5  >>>  Open Gallery With Specific Name
+1  >>>  Download from Links
+2  >>>  Collect Covers
+3  >>>  Resume Incomplete Downloads
+4  >>>  Open Gallery by Name
     ''')
     mode = input('Select Mode (Number Only): \n')
     try:
@@ -640,61 +664,34 @@ Mode Selection (enter the number):
         continue
 
     # return status of pre_download func and gal_download func
-    # return  1 download success
-    # return  2 gallery already downloaded
-    # return -1 gallery access error (h1 or h2 not found)
-    # return -2 gallery download incomplete (failed images)
-    # return -3 detail page error (request failed)
-    # return -4 server error (request failed)
-    # return -5 list page error (request failed)
-    # return -6 gallery not found in list page
-    # return -7 excluded tags found
-    # return -8 not chinese version
+    # return  1  download success
+    # return  2  gallery already downloaded
+    # return -1  gallery access error (h1 or h2 not found)
+    # return -2  gallery download incomplete (failed images)
+    # return -3  detail page error (request failed)
+    # return -4  server error (request failed)
+    # return -5  list page error (request failed)
+    # return -6  list page number exceeded
+    # return -7  excluded tags found
+    # return -8  not chinese version
 
     # 1-4 different modes
     if mode == 1:  # detail page / list page download
-        links = []
-        # link input
-        while True:
-            link = input('Please enter the link (Leave blank to finish):')
-            if len(link) == 0 or link.isspace():
-                break
-            else:
-                links.append(link)
-                temp_incomplete_links.append(link)
+        download_links()
+        time.sleep(2)
 
-        # remove duplication
-        temp_incomplete_links = list(set(temp_incomplete_links))
-        # save untried links to file
-        with open('_incomplete_links.json', 'w', encoding='utf-8') as inc_links_json:
-            inc_links_json.write(json.dumps(temp_incomplete_links, ensure_ascii=False))
-
-        # link sequence download
-        if len(links) > 0:
-            printg('Link Sequence Download Starts.')
-            for link in links:
-                dl_status = pre_download(link)
-            printg('Link Sequence Download Finished.')
-            print('---' * 20)
-        else:
-            continue
-
-    elif mode == 2:  # daily ranked galleries download
-        link = PRE_LINK + '/rank/day/'
-        pre_download(link)
-
-    elif mode == 3:  # collect covers of downloaded galleries
+    elif mode == 2:  # collect covers of downloaded galleries
         collect_cover()
+        time.sleep(2)
 
-    elif mode == 4:  # resume downloads of all incomplete galleries
+    elif mode == 3:  # resume downloads of all incomplete galleries
         incomplete_restart()
+        time.sleep(2)
 
-    elif mode == 5:  # open the gallery with specific name
+    elif mode == 4:  # open the gallery with specific name
         open_gallery()
+        time.sleep(2)
 
     else:
         printy('Invalid Input!')
         time.sleep(0.5)
-        continue
-
-    time.sleep(2)
